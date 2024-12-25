@@ -1,0 +1,48 @@
+---
+title: "pall_DEG_05"
+output: html_document
+date: "2023-10-23"
+---
+```{r}
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+library(sctransform)
+library(qs)
+library(patchwork)
+library(openxlsx)
+library(tidyverse)
+library(BiocParallel)
+library(pheatmap)
+library(viridis)
+library(viridisLite)
+```
+
+```{r}
+#load seurat object with cells from all the clusters
+pall <- subset(pall, idents = c("p1000_tumor","p1001_tumor", "p1002_tumor_clusterI", "p1002_tumor_clusterII","p1072_tumor_clusterI","p1072_tumor_clusterII"))
+```
+
+
+```{r}
+```{r}
+pall.markers<-FindAllMarkers(pall, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pall.markers %>% group_by(cluster) %>% top_n(n = 150, wt = avg_log2FC)
+```
+
+```{r}
+top50 <- pall.markers %>% group_by(cluster) %>% top_n(n = 50, wt = avg_log2FC)
+top150 <- pall.markers %>% group_by(cluster) %>% top_n(n = 150, wt = avg_log2FC)
+```
+
+
+```{r}
+heatmap_top50 <-DoHeatmap(plinda_4760, features = top50$gene) + NoLegend() + scale_fill_gradient2(low="blue", high="red", mid = "white")
+heatmap_top150 <-DoHeatmap(plinda_4760, features = top150$gene) + NoLegend() + scale_fill_gradient2(low="blue", high="red", mid = "white")
+```
+
+```{r fig.width=35, fig.height=35}
+heatmap_top50
+```
+
+```
