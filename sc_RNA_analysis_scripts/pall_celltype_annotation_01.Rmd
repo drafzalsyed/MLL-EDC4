@@ -1,0 +1,114 @@
+---
+title: "pall_celltypes_annotation_01"
+output: html_document
+date: "2023-10-23"
+---
+
+```{r}
+library(Seurat)
+library(qs)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(sctransform)
+library(patchwork)
+```
+```{r}
+p470.data <- Read10X(data.dir = "/raw_feature_bc_matrix/")
+p4760_so <- CreateSeuratObject(counts = p4760.data, min.cells = 3, min.features = 200, project = "pal")
+```
+```{r}
+p4760 <- PercentageFeatureSet(p4760, pattern = "^MT-", col.name = "percent.mt")
+p4760_filtered <- subset(x = p4760, subset = nFeature_RNA > 500 & percent.mt < 15)
+table(p4760@meta.data$orig.ident)
+
+p4760 <- p4760_filtered
+table(p4760@meta.data$orig.ident)
+```
+
+```{r}
+#remove doublets
+library(reticulate)
+mat <- GetAssayData(object = p4760, assay = "RNA", slot = "counts")
+
+tf <- "count_matrix"
+dtf <- paste(tf, "doubletScores", sep = ".")
+                                 reticulate::use_condaenv("/opt/anaconda3/envs/scrublet")
+reticulate::import("os")
+Matrix::writeMM(mat, file=tf)
+cmd <- paste0("python -c 'import sys; import pandas; import scrublet;import scipy.io; df = scipy.io.mmread(\"", tf, "\").T.tocsc(); scrub = scrublet.Scrublet(df,expected_doublet_rate=0.10); doublet_scores, predicted_doublets = scrub.scrub_doublets(); pandas.DataFrame(doublet_scores).to_csv(\"", dtf, "\");'")
+tmp <- system(cmd, intern = T)
+
+x <- as.numeric(as.data.frame(data.table::fread(dtf, sep = ",", header = F, skip = 1))[, 2])
+names(x) <- colnames(mat)
+file.remove(tf)
+file.remove(dtf)
+
+p4760 <- AddMetaData(p4760, x, "Scrublet_Score")
+table(p4760$Scrublet_Score >= 0.4) %>% print(.)
+p4760_single <- subset(p4760,subset= Scrublet_Score < 0.4)
+p4760 <- p4760_single
+```
+#UMAP and clustering
+```{r}
+p4760 <- SCTransform(p4760, vars.to.regress = c("percent.mt", "nFeature_RNA"), verbose = FALSE,return.only.var.genes = F)
+p4760 <- ScaleData(p4760, verbose = FALSE)
+p4760 <- RunPCA(p4760, npcs = 30, verbose = FALSE)
+ElbowPlot(p4760)
+p4760 <- RunUMAP(p4760, reduction = "pca", dims = 1:15)
+p4760 <- FindNeighbors(p4760, reduction = "pca", dims = 1:15)
+p4760 <- FindClusters(p4760, resolution = 0.2)
+```
+
+```{r}
+# umap and clustering analysis for all the samples as mentioned above for p4760
+
+pall<- merge(pall_samples, p4760)
+```
+
+```{r}
+#normalization, UMAP and clustering analysis
+pall <- SCTransform(pall, vars.to.regress = c("percent.mt", "nFeature_RNA"), verbose = FALSE,return.only.var.genes = F)
+pall <- ScaleData(pall, verbose = FALSE)
+pall <- RunPCA(pall, features = VariableFeatures(object = pall))
+ElbowPlot(pall, ndims = 50)
+DimPlot(pall, reduction = "pca")
+pall <- FindNeighbors(object = pall, reduction = "pca", dims = 1:30)
+
+pall <- FindClusters(pall, resolution = 0.3)
+pall<- RunUMAP(object = pall, reduction = "pca", dims = 1:30)
+ElbowPlot(pall)
+```
+
+```{r}
+#marker gene analysis
+ft_erythroid <-FeaturePlot(pall_L, features = c("TNFSF10 ","HBB", "AHSP"),pt.size=1, min.cutoff = "q10", ncol = 3, order=TRUE)
+ft_mono <- FeaturePlot(pall_L, features = c("FCGR1A","CD14","ITGAM","ITGAX", "LYZ", "FCGR3A"), pt.size=1, min.cutoff = "q10", order=TRUE)
+ft_platelet <- FeaturePlot(pall_L, features = c("PPBP", "OST4"), pt.size=1, min.cutoff = "q10", order=TRUE)
+ft_NK<-FeaturePlot(pall_L, features = c("NKG7","GNLY"), min.cutoff = "q10" )
+ft_Tcell<-FeaturePlot(pall_L, features = c("IL7R","CD3D"), min.cutoff = "q10", ncol=3) #"IGHM"
+ft_bcell <- FeaturePlot(pall_L, features = c("CD19","MS4A1"), min.cutoff = "q10", ncol = 3) #"CD22"
+ft_macrophages<- FeaturePlot(pall_L, features = c("H2Eb1","PGM1","CD14", "LYVE1"), min.cutoff = "q10", ncol = 3)
+ft_tumor1<- FeaturePlot(p4760, features = c("S100A8","S100A4","S100A6","NEAT","CD36","FTL","FTH1","C1RL","MYC"), min.cutoff = "q10", ncol = 3)
+ft_tumor2 <- FeaturePlot(p4760, features = c("NEGR1""TPSAB1","MSI2","ELMO1","RUNX1","RNF220","ETV6","MYC"), min.cutoff = "q10", ncol = 3)
+```
+
+```{r}
+Idents(pall)
+Idents(pall)<- "celltype"
+head(Idents(pall))
+pall_L <- RenameIdents(object = pall_L,"0"="Tumor_P1000", "1"="Tumor_P1072)clusterI", "2"="NK_cells", "3"="Tumor_P1001", "4"="Tumor_P1002_clusterI", "5"="Tumor_P1002_clusterII", "6"="Tumor_P1072_clusterII", "7"="T_cells", "8"="B_cells", "9"="Tumor_P4760_clusterI", "10"="Tumor_P4760_clusterII", "11"="NK_cells","12"="T_cells", "15"="Erythroblasts")
+df <- as.data.frame(pall@active.ident)
+pall <- AddMetaData(pall, col.name = "celltype", metadata = df)
+Idents(object = pall)  <- "celltype"
+head(Idents(pall))
+pall <- AddMetaData(pall, col.name = "intratumoral_clusters", metadata = df)
+DimPlot(pall, group.by = "celltype") 
+#DimPlot(pall, group.by = "celltype") + NoLegend()
+
+DimPlot(pall, group.by = "orig.ident")
+
+#save the data objects
+qsave("pall_cell_type_sob_2_final.qs")
+
+```
