@@ -1,0 +1,100 @@
+---
+title: "pall_GSEA_06"
+output: html_document
+date: "2023-10-23"
+---
+```{r}
+library(Seurat)
+library(tidyverse)
+library(hypeR)
+library(msigdbr)
+library(GSEABase)
+library(openxlsx)
+```
+
+
+
+```{r}
+#tumorcells_from singleR
+pall<- qread("pall_singleR03.qs"))
+```
+
+
+
+```{r}
+#Idents(pall)<- "orig.ident"
+head(Idents(pall))
+
+#DefaultAssay(pall_sct) <- "SCT"
+pall_sct <- PrepSCTFindMarkers(pall_sct)
+
+#find differential genes using FindMarkers function where ident.2 is p1000
+p1000_markers <- FindMarkers(pall_sct, assay = "SCT", ident.1 = "p1000", only.pos = FALSE, min.pct = 0.25, logfc.threshold = 0.25, verbose = FALSE)
+write.xlsx(p1000_markers,file.path("/p1000.xlsx"), rowNames=TRUE)
+
+p1001_markers <- FindMarkers(pall_sct, assay = "SCT", ident.1 = "p1001", ident.2 ="p1000" , only.pos = FALSE, min.pct = 0.25, logfc.threshold = 0.25, verbose = FALSE)
+ write.xlsx(p1001_markers,file.path("/p1000vs_p1001.xlsx"), rowNames=TRUE)
+
+```
+
+
+```{r}
+msigdbr_collections()
+```
+
+```{r}
+HALLMARK <-msigdb_gsets(species="Homo sapiens", category="H",clean=TRUE)
+BIOCARTA <- msigdb_gsets(species="Homo sapiens", category="C2", subcategory="CP:BIOCARTA",clean=TRUE)
+KEGG     <- msigdb_gsets(species="Homo sapiens", category="C2", subcategory="CP:KEGG",clean=TRUE)
+REACTOME <- msigdb_gsets(species="Homo sapiens", category="C2", subcategory="CP:REACTOME",clean=TRUE)
+GO_BP <- msigdb_gsets(species="Homo sapiens", category="C5", subcategory="GO:BP",clean=TRUE)
+GO_CC <- msigdb_gsets(species="Homo sapiens", category="C5", subcategory="GO:CC",clean=TRUE)
+GO_MF <- msigdb_gsets(species="Homo sapiens", category="C5", subcategory="GO:MF",clean=TRUE)
+onco <- msigdb_gsets(species="Homo sapiens", category="C6",clean=TRUE)
+```
+
+```{r}
+p1000_up <- read.xlsx("/p1000.xlsx"), sheet="upregulated")
+head(p1000_up,5)
+p1000_down <- read.xlsx("/p1000.xlsx"), sheet="downregulated")
+head(p1000_down,5)
+
+signature_p1000_up <- as.vector(p1000_up$GENE)
+signature_p1000_down <- as.vector(p1000_down$GENE)
+head(signature_p1000_up,5)
+```
+
+
+```{r}
+#HALLMARK
+hyp_obj_p1000_up_HM <- hypeR(signature_p1000_up, HALLMARK)
+hyp_dots(hyp_obj_p1000_up_HM) + ggtitle("Hallmark - Upregulated in p1000")
+
+hyp_obj_p1000_down_HM <- hypeR(signature_p1000_down, HALLMARK)
+hyp_dots(hyp_obj_p1000_down_HM)+ ggtitle("Hallmark - Downregulated in p1000")
+
+
+#REACTOME
+hyp_obj_p1000_up_R <- hypeR(signature_up, REACTOME)
+hyp_dots(hyp_obj_p1000_up_R)+ ggtitle("Reactome - Upregulated in p1000")
+
+
+hyp_obj_p1000_down_R <- hypeR(signature_p1000_down, REACTOME)
+hyp_dots(hyp_obj_p1000_down_R)+ ggtitle("Reactome - Downregulated in p1000")
+
+
+#GO:BP
+hyp_obj_p1000_up_gobp <- hypeR(signature_p1000_up, GO_BP)
+hyp_dots(hyp_obj_p1000_up_gobp)+ ggtitle("GO:BP - Upregulated in p1000")
+
+hyp_obj_p1000_down_gobp<- hypeR(signature_p1000_down, GO_BP)
+hyp_dots(hyp_obj_p1000_down_gobp)+ ggtitle("GO:BP - Downregulated in p1000")
+#similarly for all other gene sets and all other samples
+
+```
+
+```{r}
+pdf(file.path("/p1000_hyper_GOBP_down.pdf"))
+hyp_dots(hyp_obj_p1000_down_gobp)+ ggtitle("GO:BP - Downregulated in p1000")
+dev.off()
+```
