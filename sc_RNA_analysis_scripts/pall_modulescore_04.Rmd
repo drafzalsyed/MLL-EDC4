@@ -1,0 +1,73 @@
+---
+title: "pall_modulescore"
+output: html_document
+date: "2023-10-23"
+---
+
+```{r}
+library(Seurat)
+library(qs)
+library(dplyr)
+library(tidyverse)
+library(BiocParallel)
+library(ggplot2)
+library(viridis)
+library(viridisLite)
+```
+```{r}
+#load HCA gene list as mentioned in the paper
+HCA_genes <- read.xlsx("/HCA_celltypes.xlsx")
+```
+
+```{r}
+#extract gene signatures from HCA
+
+
+HSC_genes_list <- list(HSC_genes)
+
+MPP_genes_list <- list(MPP_genes)
+
+GMP_genes_list <- list(GMP_genes)
+
+Mono_CD14_genes_list <- list(Mono_CD14_genes)
+
+Mono_CD16_genes_list <- list(Mono_CD16_genes)
+
+pre_DC_genes_list <- list(pre_DC_genes)
+
+cDC1_genes_list <- list(cDC1_genes)
+
+cDC2_genes_list <- list(cDC2_genes)
+
+prMA_genes_list <- list(prMA_genes)
+
+eo_genes_list <- list(eo_genes)
+```
+
+```{r}
+```{r}
+p4760_ms_I <- subset(pall, idents ="Tumor_P4760_clusterI")
+
+p4760_ms_II <- subset(pall, idents="Tumor_P4760_clusterII")
+modulescorelist <- list(HSC_genes_list,MPP_genes_list,GMP_genes_list,Mono_CD14_genes_list,Mono_CD16_genes_list,pre_DC_genes_list,cDC1_genes_list,cDC2_genes_list,prMA_genes_list,eo_genes_list)
+for(modulescore_name in names(modulescorelist)){
+   p4760_ms_I <- AddModuleScore(p4760_ms_I,
+                                 features = modulescorelist[[modulescore_name]],
+                                 nbin=16,
+                                 name=modulescore_name)
+}
+
+
+for(modulescore_name in names(modulescorelist)){
+   p4760_ms_II <- AddModuleScore(p4760_ms_II,
+                                 features = modulescorelist[[modulescore_name]],
+                                 nbin=16,
+                                 name=modulescore_name)
+}
+
+pall_modulescores<- #repeat for all tumor clusters
+```
+
+```{r}
+plot_HCA<- VlnPlot(pall_modulescores, features = c( "HSC_genes1","GMP_genes1", "MPP_genes1","Mono_CD14_genes1","pre_DC_genes1","cDC1_genes1","cDC2_genes1", "prMA_genes1", "eo_genes1"), ncol = 3, pt.size = 0)
+```
