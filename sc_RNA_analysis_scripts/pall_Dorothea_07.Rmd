@@ -1,0 +1,132 @@
+---
+title: "pall_Dorothea_07"
+output: html_document
+date: "2023-10-23"
+---
+```{r}
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+library(sctransform)
+library(qs)
+library(patchwork)
+library(openxlsx)
+library(BiocParallel)
+library(pheatmap)
+library(viridis)
+library(viridisLite)
+library(dorothea)
+```
+
+
+```{r}
+#tumorcells_from singleR
+pall<- qread("/pall_singleR_03.qs"))
+
+```
+
+```{r}
+my_order<-list("HSC","GMP","MPP","ERP","prMa","prMono","Mono/Macro_CD16","Mono/Macro_CD14","preDC","cDC2")
+```
+
+```{r}
+umap<- DimPlot(palltumors, reduction = "umap",group.by="celltype", label = T,pt.size=0.5)
+
+umap_celltype_prediction <- DimPlot(palltumors, reduction = "umap", group.by="celltype_1_predicted",order=my_order,label = T,pt.size=0.5)+ggtitle("Predicted celltypes")
+```
+
+
+Clustering cells with TF activity
+```{r}
+## We read Dorothea Regulons for Human:
+dorothea_regulon_human <- get(data("dorothea_hs", package = "dorothea"))
+
+## We obtain the regulons based on interactions with confidence level A, B 
+regulon <- dorothea_regulon_human %>%
+    dplyr::filter(confidence %in% c("A","B"))
+
+## We compute Viper Scores 
+pall_dorothea <- run_viper(palltumors, regulon,
+                  options = list(method = "scale", minsize = 4, 
+                                 eset.filter = FALSE, cores = 1, 
+                                 verbose = FALSE))
+
+```
+
+
+```{r}
+## We compute the Nearest Neighbours to perform cluster
+DefaultAssay(object = pall_dorothea) <- "dorothea"
+pall_dorothea <- ScaleData(pall_dorothea)
+pall_dorothea <- RunPCA(pall_dorothea, features = rownames(pall_dorothea), verbose = FALSE)
+pall_dorothea <- FindNeighbors(pall_dorothea, dims = 1:10, verbose = FALSE)
+pall_dorothea <- FindClusters(pall_dorothea, resolution = 0.4, verbose = FALSE)
+
+pall_dorothea <- RunUMAP(pall_dorothea, dims = 1:10, umap.method = "uwot", metric = "cosine")
+
+pall_dorothea.markers <- FindAllMarkers(pall_dorothea, only.pos = TRUE, min.pct = 0.25, 
+                               logfc.threshold = 0.25, verbose = FALSE)
+
+Idents(pall_dorothea)<-"celltype"
+head(Idents(pall_dorothea))
+```
+
+```{r}
+DimPlot(pall_dorothea, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+
+```{r}
+Idents(pall_dorothea) <- "celltype"
+## We transform Viper scores, scaled by seurat, into a data frame to better 
+## handling the results
+viper_scores_df <- GetAssayData(pall_dorothea, slot = "scale.data", 
+                                    assay = "dorothea") %>%
+  data.frame(check.names = F) %>%
+  t()
+
+## We create a data frame containing the cells and their clusters
+CellsClusters <- data.frame(cell = names(Idents(pall_dorothea)), 
+                            cell_type = as.character(Idents(pall_dorothea)),
+                            check.names = F)
+
+## We create a data frame with the Viper score per cell and its clusters
+viper_scores_clusters <- viper_scores_df  %>%
+  data.frame() %>% 
+  rownames_to_column("cell") %>%
+  gather(tf, activity, -cell) %>%
+  inner_join(CellsClusters)
+
+## We summarize the Viper scores by cellpopulation
+summarized_viper_scores <- viper_scores_clusters %>% 
+  group_by(tf, cell_type) %>%
+  summarise(avg = mean(activity),
+            std = sd(activity))
+
+
+```
+
+```{r fig.height=12, width=4}
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(min(summarized_viper_scores), 0, 
+                   length.out=ceiling(palette_length/2) + 1),
+               seq(max(summarized_viper_scores_df)/palette_length, 
+                   max(summarized_viper_scores_df), 
+                   length.out=floor(palette_length/2)))
+
+viper_hmap <- pheatmap(t(summarized_viper_scores_df),fontsize=14, 
+                       fontsize_row = 10, 
+                       color=my_color, breaks = my_breaks, 
+                       main = "DoRothEA (AB)", angle_col = 45,
+                       treeheight_col = 0,  border_color = NA, cluster_cols = F) 
+
+
+```
+
+```{r}
+pdf(file.path("/pall_dorothea.pdf"), width=10, height=10)
+viper_hmap
+dev.off()
+```
