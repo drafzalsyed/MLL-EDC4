@@ -1,1 +1,55 @@
 
+---
+title: "pall_copykat"
+output: html_document
+date: "2023-10-23"
+---
+---
+```{r}
+library(Seurat)
+library(qs)
+library(dplyr)
+library(copykat)
+library(ggplot2)
+```
+
+```{r}
+pall<- #load seurat object for all tumor cells
+ DimPlot(pall, group.by = "orig.ident")
+```
+
+```{r}
+p4760_<- qread("load_seurat object with annotated celltypes for each sample.qs")
+
+
+
+```
+run copykat
+```{r}
+library(copykat)
+p4760.rawdata <- as.matrix(p4760_sub@assays$RNA@counts)
+
+#you can add known diploid cells as reference, but it has to be as a vector
+microenvironment <- c("T_cells", "B_cells")
+cluster<-as.data.frame(p4760_sub$celltype)
+names(cluster)[names(cluster) == "p4760_sub$celltype"] <- "celltype"
+cluster_subset <- subset(cluster, celltype %in% microenvironment)
+df <- data.frame(names = row.names(cluster_subset))
+vector_microenvironment <- as.vector(t(df))
+
+
+copykat_p4760_sub_ref <- copykat(rawmat=p4760.rawdata, id.type="S", cell.line="no", ngene.chr=5, win.size=25, KS.cut=0.2, sam.name="copykat_p4760_withME_ref", distance="euclidean", n.cores=4, norm.cell.names=vector_microenvironment)
+
+pred.test_p4760_sub_ref <- data.frame(copykat_p4760_sub_ref$prediction)
+CNA.test_p4760_sub_ref <- data.frame(copykat_p4760_sub_ref$CNAmat)
+predict_p4760_sub_ref <- dplyr::select(pred.test_p4760_sub_ref,-cell.names)
+
+
+
+p4760_sub_copykat_ref <- AddMetaData(p4760_sub_copykat_ref, col.name = "copyKat", metadata = pred.test_p4760_sub_ref$copykat.pred)
+Idents(object = p4760_sub_copykat_ref)  <- "copyKat"
+head(Idents(p4760_sub_copykat_ref))
+
+DimPlot(p4760_sub_copykat_ref, reduction = "umap", label = T, group.by="copyKat")
+#do it for all the samples separately from the seurat object with all the samples and overlay the copykat results
+```
